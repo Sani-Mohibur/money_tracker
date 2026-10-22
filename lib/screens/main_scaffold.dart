@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../models/account_transfer.dart';
+import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/currency_service.dart';
 import '../services/storage_service.dart';
@@ -31,6 +33,9 @@ class _MainScaffoldState extends State<MainScaffold> {
 
   int _currentIndex = 0;
   List<Transaction> _transactions = [];
+  bool _isMoneyAccountsEnabled = false;
+  List<MoneyAccount> _accounts = [];
+  List<AccountTransfer> _transfers = [];
   bool _isLoading = true;
   String? _initErrorMessage;
 
@@ -56,9 +61,16 @@ class _MainScaffoldState extends State<MainScaffold> {
           .loadTransactions()
           .timeout(const Duration(seconds: 4));
 
+      final isEnabled = await _storageService.isMoneyAccountsEnabled();
+      final accounts = await _storageService.loadAccounts();
+      final transfers = await _storageService.loadTransfers();
+
       if (!mounted) return;
       setState(() {
         _transactions = list;
+        _isMoneyAccountsEnabled = isEnabled;
+        _accounts = accounts;
+        _transfers = transfers;
         _isLoading = false;
         _initErrorMessage = null;
       });
@@ -149,6 +161,10 @@ class _MainScaffoldState extends State<MainScaffold> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => AddTransactionSheet(
         initialTransaction: existing,
+        isMoneyAccountsEnabled: _isMoneyAccountsEnabled,
+        accounts: _accounts,
+        allTransactions: _transactions,
+        transfers: _transfers,
         onSave: (tx) {
           if (existing != null) {
             _updateTransaction(tx);
@@ -259,6 +275,10 @@ class _MainScaffoldState extends State<MainScaffold> {
                         setState(() => _currentIndex = 3);
                       },
                       onOpenAddSheet: () => _openAddTransactionModal(),
+                      isMoneyAccountsEnabled: _isMoneyAccountsEnabled,
+                      accounts: _accounts,
+                      transfers: _transfers,
+                      onRefresh: _loadAll,
                     ),
                     // 1: Calendar Tab
                     CalendarTab(
@@ -281,10 +301,19 @@ class _MainScaffoldState extends State<MainScaffold> {
                     SettingsTab(
                       currentThemeMode: widget.currentThemeMode,
                       onThemeModeChanged: widget.onThemeModeChanged,
+                      transactions: _transactions,
+                      onUpdateTransaction: _openAddTransactionModal,
                       onDataChanged: () async {
                         final list = await _storageService.loadTransactions();
+                        final isEnabled = await _storageService.isMoneyAccountsEnabled();
+                        final accounts = await _storageService.loadAccounts();
+                        final transfers = await _storageService.loadTransfers();
+                        if (!mounted) return;
                         setState(() {
                           _transactions = list;
+                          _isMoneyAccountsEnabled = isEnabled;
+                          _accounts = accounts;
+                          _transfers = transfers;
                         });
                       },
                     ),

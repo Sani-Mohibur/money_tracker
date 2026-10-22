@@ -14,16 +14,16 @@ void main() async {
     ),
   );
 
-  ThemeMode initialThemeMode = ThemeMode.system;
+  ThemeMode initialThemeMode = ThemeMode.light;
   try {
     final storageService = StorageService();
     initialThemeMode = await storageService.loadThemeMode().timeout(
       const Duration(seconds: 2),
-      onTimeout: () => ThemeMode.system,
+      onTimeout: () => ThemeMode.light,
     );
   } catch (e, stack) {
-    debugPrint('Startup theme load fallback to system: $e\n$stack');
-    initialThemeMode = ThemeMode.system;
+    debugPrint('Startup theme load fallback to light: $e\n$stack');
+    initialThemeMode = ThemeMode.light;
   }
 
   runApp(MoneyTrackerApp(initialThemeMode: initialThemeMode));
@@ -35,7 +35,7 @@ class MoneyTrackerApp extends StatefulWidget {
 
   const MoneyTrackerApp({
     super.key,
-    this.initialThemeMode = ThemeMode.system,
+    this.initialThemeMode = ThemeMode.light,
   });
 
   @override

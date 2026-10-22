@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'account_allocation.dart';
 
 /// Represents the type of a financial transaction.
 enum TransactionType {
@@ -16,6 +18,7 @@ class Transaction {
   final DateTime date;
   final String note;
   final String currency;
+  final List<AccountAllocation> allocations;
 
   const Transaction({
     required this.id,
@@ -26,6 +29,7 @@ class Transaction {
     required this.date,
     this.note = '',
     this.currency = 'USD',
+    this.allocations = const [],
   });
 
   /// Check if transaction is income.
@@ -33,6 +37,20 @@ class Transaction {
 
   /// Check if transaction is expense.
   bool get isExpense => type == TransactionType.expense;
+
+  /// Total amount allocated to accounts in this transaction.
+  double get totalAllocated {
+    return allocations.fold(0.0, (sum, item) => sum + item.amount);
+  }
+
+  /// Unassigned portion of the transaction amount.
+  double get unassignedAmount {
+    final diff = amount - totalAllocated;
+    return diff > 0.000001 ? diff : 0.0;
+  }
+
+  /// Whether the transaction has unassigned funds.
+  bool get hasUnassigned => unassignedAmount > 0.000001;
 
   /// Creates a copy of this transaction with optional modified values.
   Transaction copyWith({
@@ -44,6 +62,7 @@ class Transaction {
     DateTime? date,
     String? note,
     String? currency,
+    List<AccountAllocation>? allocations,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -54,6 +73,7 @@ class Transaction {
       date: date ?? this.date,
       note: note ?? this.note,
       currency: currency ?? this.currency,
+      allocations: allocations ?? this.allocations,
     );
   }
 
@@ -68,12 +88,21 @@ class Transaction {
       'date': date.toIso8601String(),
       'note': note,
       'currency': currency,
+      'allocations': allocations.map((a) => a.toMap()).toList(),
     };
   }
 
   /// Creates a [Transaction] from a Map.
-  /// Backward compatible: existing transactions without currency default safely to 'USD'.
+  /// Backward compatible: existing transactions without currency default safely to 'USD',
+  /// and existing transactions without allocations default safely to empty list `const []`.
   factory Transaction.fromMap(Map<String, dynamic> map) {
+    List<AccountAllocation> allocations = const [];
+    if (map['allocations'] is List) {
+      allocations = (map['allocations'] as List<dynamic>)
+          .map((item) => AccountAllocation.fromMap(item as Map<String, dynamic>))
+          .toList();
+    }
+
     return Transaction(
       id: map['id'] as String? ?? '',
       title: map['title'] as String? ?? '',
@@ -89,6 +118,7 @@ class Transaction {
       currency: (map['currency'] as String?)?.isNotEmpty == true
           ? map['currency'] as String
           : 'USD',
+      allocations: allocations,
     );
   }
 
@@ -110,7 +140,8 @@ class Transaction {
         other.category == category &&
         other.date == date &&
         other.note == note &&
-        other.currency == currency;
+        other.currency == currency &&
+        listEquals(other.allocations, allocations);
   }
 
   @override
@@ -122,6 +153,7 @@ class Transaction {
         category.hashCode ^
         date.hashCode ^
         note.hashCode ^
-        currency.hashCode;
+        currency.hashCode ^
+        allocations.hashCode;
   }
 }

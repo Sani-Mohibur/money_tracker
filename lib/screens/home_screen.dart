@@ -8,7 +8,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MainScaffold(
-      currentThemeMode: ThemeMode.system,
+      currentThemeMode: ThemeMode.light,
       onThemeModeChanged: (_) {},
     );
   }

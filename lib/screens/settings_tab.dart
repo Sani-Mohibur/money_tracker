@@ -1,23 +1,31 @@
 import 'package:flutter/material.dart';
 import '../constants/categories.dart';
+import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/currency_service.dart';
 import '../services/storage_service.dart';
 import '../utils/formatters.dart';
+import 'account_management_screen.dart';
+import 'category_management_screen.dart';
 
 /// Settings tab for managing default currency, exchange rates,
-/// transaction categories, theme mode, and data maintenance.
+/// transaction categories, money accounts, theme mode, and data maintenance.
 class SettingsTab extends StatefulWidget {
   final VoidCallback onDataChanged;
   final Function(ThemeMode) onThemeModeChanged;
   final ThemeMode currentThemeMode;
+  final List<Transaction> transactions;
+  final Function(Transaction)? onUpdateTransaction;
 
   const SettingsTab({
     super.key,
     required this.onDataChanged,
     required this.onThemeModeChanged,
     required this.currentThemeMode,
+    this.transactions = const [],
+    this.onUpdateTransaction,
   });
 
   @override
@@ -27,6 +35,28 @@ class SettingsTab extends StatefulWidget {
 class _SettingsTabState extends State<SettingsTab> {
   final CurrencyService _currencyService = CurrencyService();
   final StorageService _storageService = StorageService();
+
+  bool _isMoneyAccountsEnabled = false;
+  List<MoneyAccount> _accounts = [];
+  List<AccountTransfer> _transfers = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMoneyAccountsData();
+  }
+
+  Future<void> _loadMoneyAccountsData() async {
+    final enabled = await _storageService.isMoneyAccountsEnabled();
+    final accounts = await _storageService.loadAccounts();
+    final transfers = await _storageService.loadTransfers();
+    if (!mounted) return;
+    setState(() {
+      _isMoneyAccountsEnabled = enabled;
+      _accounts = accounts;
+      _transfers = transfers;
+    });
+  }
 
   Future<void> _selectDefaultCurrency() async {
     final currentCode = _currencyService.defaultCurrencyCode;
@@ -154,185 +184,6 @@ class _SettingsTabState extends State<SettingsTab> {
     );
   }
 
-  void _showAddCategoryDialog() {
-    final nameController = TextEditingController();
-    TransactionType catType = TransactionType.expense;
-    String selectedIconKey = 'shopping_bag';
-    Color selectedColor = const Color(0xFF3B82F6);
-
-    final Map<String, IconData> availableIcons = {
-      'shopping_bag': Icons.shopping_bag_rounded,
-      'cafe': Icons.local_cafe_rounded,
-      'fitness': Icons.fitness_center_rounded,
-      'pets': Icons.pets_rounded,
-      'book': Icons.book_rounded,
-      'savings': Icons.savings_rounded,
-      'payments': Icons.payments_rounded,
-      'celebration': Icons.celebration_rounded,
-      'gaming': Icons.sports_esports_rounded,
-      'car': Icons.car_rental_rounded,
-    };
-
-    final availableColors = [
-      const Color(0xFF3B82F6), // Blue
-      const Color(0xFF10B981), // Green
-      const Color(0xFFEF4444), // Red
-      const Color(0xFFF59E0B), // Amber
-      const Color(0xFF8B5CF6), // Purple
-      const Color(0xFFEC4899), // Pink
-      const Color(0xFF14B8A6), // Teal
-    ];
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (dialogCtx, setDialogState) {
-          return AlertDialog(
-            title: const Text('Add Custom Category'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Type Segment
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('Expense')),
-                          selected: catType == TransactionType.expense,
-                          selectedColor: const Color(0xFFEF4444),
-                          labelStyle: TextStyle(
-                            color: catType == TransactionType.expense
-                                ? Colors.white
-                                : null,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) => setDialogState(
-                              () => catType = TransactionType.expense),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ChoiceChip(
-                          label: const Center(child: Text('Income')),
-                          selected: catType == TransactionType.income,
-                          selectedColor: const Color(0xFF10B981),
-                          labelStyle: TextStyle(
-                            color: catType == TransactionType.income
-                                ? Colors.white
-                                : null,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          onSelected: (_) => setDialogState(
-                              () => catType = TransactionType.income),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Name Field
-                  TextField(
-                    controller: nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Category Name',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Pick Icon
-                  const Text('Select Icon:', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: availableIcons.entries.map((entry) {
-                      final isSel = selectedIconKey == entry.key;
-                      return InkWell(
-                        onTap: () => setDialogState(() => selectedIconKey = entry.key),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: isSel
-                                ? selectedColor.withValues(alpha: 0.2)
-                                : Colors.transparent,
-                            border: Border.all(
-                              color: isSel ? selectedColor : Colors.grey.withValues(alpha: 0.3),
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(entry.value, size: 20, color: selectedColor),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Pick Color
-                  const Text('Select Color:', style: TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: availableColors.map((col) {
-                      final isSel = selectedColor == col;
-                      return GestureDetector(
-                        onTap: () => setDialogState(() => selectedColor = col),
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: col,
-                            shape: BoxShape.circle,
-                            border: isSel
-                                ? Border.all(color: Colors.white, width: 2.5)
-                                : null,
-                            boxShadow: isSel
-                                ? [BoxShadow(color: col.withValues(alpha: 0.6), blurRadius: 6)]
-                                : null,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final name = nameController.text.trim();
-                  if (name.isNotEmpty) {
-                    final item = CategoryItem(
-                      name: name,
-                      icon: CategoryItem.getIconByKey(selectedIconKey),
-                      color: selectedColor,
-                      isCustom: true,
-                      iconKey: selectedIconKey,
-                    );
-                    Navigator.of(ctx).pop();
-                    await _storageService.addCustomCategory(item, catType);
-                    if (!mounted) return;
-                    setState(() {});
-                    widget.onDataChanged();
-                  }
-                },
-                child: const Text('Add Category'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -432,68 +283,126 @@ class _SettingsTabState extends State<SettingsTab> {
           _buildSectionHeader('CATEGORY MANAGEMENT'),
           _buildCard(
             theme: theme,
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.category_outlined, color: theme.colorScheme.primary, size: 20),
+              ),
+              title: const Text('Category Management', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                '${AppCategories.expenseCategories.length} expense, ${AppCategories.incomeCategories.length} income categories',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => CategoryManagementScreen(
+                      transactions: widget.transactions,
+                      onDataChanged: () {
+                        setState(() {});
+                        widget.onDataChanged();
+                      },
+                    ),
+                  ),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // =================================================================
+          // SECTION 2.5: MONEY ACCOUNTS (Positioned after Custom Categories)
+          // =================================================================
+          _buildSectionHeader('MONEY ACCOUNTS'),
+          _buildCard(
+            theme: theme,
             child: Column(
               children: [
-                ListTile(
-                  leading: const Icon(Icons.add_circle_outline_rounded),
-                  title: const Text('Add Custom Category', style: TextStyle(fontWeight: FontWeight.w600)),
-                  subtitle: const Text('Create custom income or expense categories'),
-                  trailing: const Icon(Icons.add_rounded),
-                  onTap: _showAddCategoryDialog,
+                SwitchListTile(
+                  secondary: Icon(
+                    _isMoneyAccountsEnabled
+                        ? Icons.account_balance_wallet_rounded
+                        : Icons.account_balance_wallet_outlined,
+                    color: _isMoneyAccountsEnabled ? theme.colorScheme.primary : null,
+                  ),
+                  title: const Text(
+                    'Enable Money Accounts',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: const Text(
+                    'Track separate accounts (Bank, Cash, Wallets) and allocate transactions',
+                  ),
+                  value: _isMoneyAccountsEnabled,
+                  onChanged: (val) async {
+                    await _storageService.setMoneyAccountsEnabled(val);
+                    setState(() {
+                      _isMoneyAccountsEnabled = val;
+                    });
+                    widget.onDataChanged();
+                  },
                 ),
-                if (AppCategories.customExpenseCategories.isNotEmpty ||
-                    AppCategories.customIncomeCategories.isNotEmpty) ...[
+                if (_isMoneyAccountsEnabled) ...[
                   const Divider(height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(14.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Your Custom Categories:',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ListTile(
+                    leading: const Icon(Icons.manage_accounts_outlined),
+                    title: const Text('Manage Accounts', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text('${_accounts.length} account(s) configured'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => AccountManagementScreen(
+                            transactions: widget.transactions,
+                            accounts: _accounts,
+                            transfers: _transfers,
+                            onUpdateTransaction: widget.onUpdateTransaction ?? (_) {},
+                            onDataChanged: () async {
+                              await _loadMoneyAccountsData();
+                              widget.onDataChanged();
+                            },
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            ...AppCategories.customExpenseCategories.map((c) {
-                              return Chip(
-                                avatar: Icon(c.icon, size: 16, color: c.color),
-                                label: Text(c.name),
-                                deleteIcon: const Icon(Icons.close_rounded, size: 16),
-                                onDeleted: () async {
-                                  await _storageService.deleteCustomCategory(
-                                    c.name,
-                                    TransactionType.expense,
-                                  );
-                                  if (!mounted) return;
-                                  setState(() {});
-                                  widget.onDataChanged();
-                                },
-                              );
-                            }),
-                            ...AppCategories.customIncomeCategories.map((c) {
-                              return Chip(
-                                avatar: Icon(c.icon, size: 16, color: c.color),
-                                label: Text(c.name),
-                                deleteIcon: const Icon(Icons.close_rounded, size: 16),
-                                onDeleted: () async {
-                                  await _storageService.deleteCustomCategory(
-                                    c.name,
-                                    TransactionType.income,
-                                  );
-                                  if (!mounted) return;
-                                  setState(() {});
-                                  widget.onDataChanged();
-                                },
-                              );
-                            }),
-                          ],
-                        ),
-                      ],
+                      );
+                      await _loadMoneyAccountsData();
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.account_tree_outlined),
+                    title: const Text('Reconciliation & Transfers', style: TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(
+                      _accounts.isEmpty
+                          ? 'Add accounts to view reconciliation'
+                          : 'Track balance differences and inter-account transfers',
                     ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => AccountManagementScreen(
+                            transactions: widget.transactions,
+                            accounts: _accounts,
+                            transfers: _transfers,
+                            onUpdateTransaction: widget.onUpdateTransaction ?? (_) {},
+                            onDataChanged: () async {
+                              await _loadMoneyAccountsData();
+                              widget.onDataChanged();
+                            },
+                          ),
+                        ),
+                      );
+                      await _loadMoneyAccountsData();
+                      if (mounted) setState(() {});
+                    },
                   ),
                 ],
               ],
@@ -529,12 +438,12 @@ class _SettingsTabState extends State<SettingsTab> {
                         icon: Icon(Icons.dark_mode_outlined, size: 16),
                         label: Text('Dark'),
                       ),
-                      ButtonSegment(
-                        value: ThemeMode.system,
-                        label: Text('System'),
-                      ),
                     ],
-                    selected: {widget.currentThemeMode},
+                    selected: {
+                      widget.currentThemeMode == ThemeMode.dark
+                          ? ThemeMode.dark
+                          : ThemeMode.light,
+                    },
                     onSelectionChanged: (set) {
                       widget.onThemeModeChanged(set.first);
                     },

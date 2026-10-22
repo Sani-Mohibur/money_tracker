@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import '../models/account_transfer.dart';
+import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/currency_service.dart';
 import '../utils/formatters.dart';
+import '../widgets/account_breakdown_sheet.dart';
 import '../widgets/balance_card.dart';
 import '../widgets/charts/bar_chart.dart';
 import '../widgets/transaction_tile.dart';
 
 /// Home tab showing total balance, spending overview, current month summary,
-/// and recent transactions.
+/// and recent transactions, with interactive account breakdown cards when enabled.
 class HomeTab extends StatelessWidget {
   final List<Transaction> transactions;
   final Function(Transaction) onAddTransaction;
@@ -15,6 +18,10 @@ class HomeTab extends StatelessWidget {
   final Function(String) onDeleteTransaction;
   final VoidCallback onNavigateToTransactions;
   final VoidCallback onOpenAddSheet;
+  final bool isMoneyAccountsEnabled;
+  final List<MoneyAccount> accounts;
+  final List<AccountTransfer> transfers;
+  final Future<void> Function()? onRefresh;
 
   const HomeTab({
     super.key,
@@ -24,7 +31,42 @@ class HomeTab extends StatelessWidget {
     required this.onDeleteTransaction,
     required this.onNavigateToTransactions,
     required this.onOpenAddSheet,
+    this.isMoneyAccountsEnabled = false,
+    this.accounts = const [],
+    this.transfers = const [],
+    this.onRefresh,
   });
+
+  void _openBreakdown(BuildContext context, bool isIncome) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AccountBreakdownSheet(
+        isIncome: isIncome,
+        isAllocationOnly: false,
+        allTransactions: transactions,
+        accounts: accounts,
+        transfers: transfers,
+        onTransactionTap: onUpdateTransaction,
+      ),
+    );
+  }
+
+  void _openAllocationBreakdown(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AccountBreakdownSheet(
+        isAllocationOnly: true,
+        allTransactions: transactions,
+        accounts: accounts,
+        transfers: transfers,
+        onTransactionTap: onUpdateTransaction,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +107,9 @@ class HomeTab extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: () async {
-        // Handled by parent if necessary
+        if (onRefresh != null) {
+          await onRefresh!();
+        }
       },
       child: CustomScrollView(
         slivers: [
@@ -78,6 +122,9 @@ class HomeTab extends StatelessWidget {
                 totalExpenses: totalExpenses,
                 currencyCode: defaultCurrency,
                 subtitle: 'All-time net balance in $defaultCurrency',
+                onIncomeTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, true) : null,
+                onExpenseTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, false) : null,
+                onAllocationBreakdownTap: isMoneyAccountsEnabled ? () => _openAllocationBreakdown(context) : null,
               ),
             ),
           ),

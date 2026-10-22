@@ -7,6 +7,9 @@ class BalanceCard extends StatelessWidget {
   final double totalExpenses;
   final String currencyCode;
   final String? subtitle;
+  final VoidCallback? onIncomeTap;
+  final VoidCallback? onExpenseTap;
+  final VoidCallback? onAllocationBreakdownTap;
 
   const BalanceCard({
     super.key,
@@ -14,6 +17,9 @@ class BalanceCard extends StatelessWidget {
     required this.totalExpenses,
     required this.currencyCode,
     this.subtitle,
+    this.onIncomeTap,
+    this.onExpenseTap,
+    this.onAllocationBreakdownTap,
   });
 
   double get netBalance => totalIncome - totalExpenses;
@@ -26,10 +32,10 @@ class BalanceCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            const Color(0xFF1E293B), // Slate 800
-            const Color(0xFF0F172A), // Slate 900
+            Color(0xFF1E293B), // Slate 800
+            Color(0xFF0F172A), // Slate 900
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -138,7 +144,77 @@ class BalanceCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 22),
+            if (onAllocationBreakdownTap != null) ...[
+              const SizedBox(height: 12),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onAllocationBreakdownTap,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF60A5FA).withValues(alpha: 0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.pie_chart_outline_rounded,
+                                size: 14,
+                                color: Color(0xFF93C5FD),
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                            const Text(
+                              'Allocation Breakdown',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              'View Accounts',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 16,
+                              color: Colors.white.withValues(alpha: 0.5),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ] else ...[
+              const SizedBox(height: 22),
+            ],
 
             // Income and Expense Breakdown Tiles
             Row(
@@ -150,6 +226,7 @@ class BalanceCard extends StatelessWidget {
                     amount: totalIncome,
                     currencyCode: currencyCode,
                     isIncome: true,
+                    onTap: onIncomeTap,
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -160,6 +237,7 @@ class BalanceCard extends StatelessWidget {
                     amount: totalExpenses,
                     currencyCode: currencyCode,
                     isIncome: false,
+                    onTap: onExpenseTap,
                   ),
                 ),
               ],
@@ -176,12 +254,14 @@ class _SummaryPill extends StatelessWidget {
   final double amount;
   final String currencyCode;
   final bool isIncome;
+  final VoidCallback? onTap;
 
   const _SummaryPill({
     required this.title,
     required this.amount,
     required this.currencyCode,
     required this.isIncome,
+    this.onTap,
   });
 
   @override
@@ -190,61 +270,80 @@ class _SummaryPill extends StatelessWidget {
     const expenseColor = Color(0xFFEF4444); // Crimson
     final color = isIncome ? incomeColor : expenseColor;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.09),
-        ),
-      ),
-      child: Row(
-        children: [
-          // Icon badge
-          Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isIncome ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-              color: color,
-              size: 16,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.09),
             ),
           ),
-          const SizedBox(width: 10),
-          // Texts
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.65),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+          child: Row(
+            children: [
+              // Icon badge
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    Formatters.formatCurrency(amount, currencyCode),
-                    style: TextStyle(
-                      color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                child: Icon(
+                  isIncome ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+                  color: color,
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Texts
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.65),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (onTap != null) ...[
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            size: 14,
+                            color: Colors.white.withValues(alpha: 0.4),
+                          ),
+                        ],
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        Formatters.formatCurrency(amount, currencyCode),
+                        style: TextStyle(
+                          color: isIncome ? const Color(0xFF34D399) : const Color(0xFFF87171),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
