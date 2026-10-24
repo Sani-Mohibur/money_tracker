@@ -4,10 +4,13 @@ import '../constants/categories.dart';
 import '../models/account_allocation.dart';
 import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/account_service.dart';
 import '../services/currency_service.dart';
+import '../services/storage_service.dart';
 import '../utils/formatters.dart';
 
 /// Allocation item holder for dynamic allocation form rows.
@@ -35,6 +38,8 @@ class AddTransactionSheet extends StatefulWidget {
   final List<MoneyAccount> accounts;
   final List<Transaction> allTransactions;
   final List<AccountTransfer> transfers;
+  final List<Loan> loans;
+  final List<LoanRepayment> repayments;
 
   const AddTransactionSheet({
     super.key,
@@ -44,6 +49,8 @@ class AddTransactionSheet extends StatefulWidget {
     this.accounts = const [],
     this.allTransactions = const [],
     this.transfers = const [],
+    this.loans = const [],
+    this.repayments = const [],
   });
 
   @override
@@ -62,7 +69,11 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   late String _selectedCurrencyCode;
 
   final CurrencyService _currencyService = CurrencyService();
+  final StorageService _storageService = StorageService();
   late final AccountService _accountService;
+
+  late List<Loan> _loans;
+  late List<LoanRepayment> _repayments;
 
   final List<_AllocationEntry> _allocationEntries = [];
 
@@ -72,6 +83,9 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
   void initState() {
     super.initState();
     _accountService = AccountService(_currencyService);
+    _loans = List.from(widget.loans);
+    _repayments = List.from(widget.repayments);
+    _loadFreshLoansAndRepayments();
     final init = widget.initialTransaction;
 
     if (init != null) {
@@ -115,6 +129,28 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
     }
 
     _amountController.addListener(_onAmountChanged);
+  }
+
+  Future<void> _loadFreshLoansAndRepayments() async {
+    final freshLoans = await _storageService.loadLoans();
+    final freshRepayments = await _storageService.loadLoanRepayments();
+    if (!mounted) return;
+    setState(() {
+      if (freshLoans.isNotEmpty || _loans.isEmpty) _loans = freshLoans.isNotEmpty ? freshLoans : _loans;
+      if (freshRepayments.isNotEmpty || _repayments.isEmpty) _repayments = freshRepayments.isNotEmpty ? freshRepayments : _repayments;
+      _validateAllocationsInline();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AddTransactionSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loans != widget.loans) {
+      _loans = List.from(widget.loans);
+    }
+    if (oldWidget.repayments != widget.repayments) {
+      _repayments = List.from(widget.repayments);
+    }
   }
 
   @override
@@ -175,6 +211,8 @@ class _AddTransactionSheetState extends State<AddTransactionSheet> {
       account,
       widget.allTransactions,
       widget.transfers,
+      loans: _loans,
+      repayments: _repayments,
     );
     return _accountService.getAvailableFundsForTransaction(
       account: account,

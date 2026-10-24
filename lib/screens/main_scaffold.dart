@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/account_transfer.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/currency_service.dart';
@@ -36,6 +38,8 @@ class _MainScaffoldState extends State<MainScaffold> {
   bool _isMoneyAccountsEnabled = false;
   List<MoneyAccount> _accounts = [];
   List<AccountTransfer> _transfers = [];
+  List<Loan> _loans = [];
+  List<LoanRepayment> _repayments = [];
   bool _isLoading = true;
   String? _initErrorMessage;
 
@@ -64,6 +68,8 @@ class _MainScaffoldState extends State<MainScaffold> {
       final isEnabled = await _storageService.isMoneyAccountsEnabled();
       final accounts = await _storageService.loadAccounts();
       final transfers = await _storageService.loadTransfers();
+      final loans = await _storageService.loadLoans();
+      final repayments = await _storageService.loadLoanRepayments();
 
       if (!mounted) return;
       setState(() {
@@ -71,6 +77,8 @@ class _MainScaffoldState extends State<MainScaffold> {
         _isMoneyAccountsEnabled = isEnabled;
         _accounts = accounts;
         _transfers = transfers;
+        _loans = loans;
+        _repayments = repayments;
         _isLoading = false;
         _initErrorMessage = null;
       });
@@ -132,6 +140,19 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   Future<void> _deleteTransaction(String id) async {
+    if (_repayments.any((r) => r.interestTransactionId == id)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This transaction is linked to a Loan Repayment. Please manage it from Loan Management.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     final deleted = _transactions.firstWhere((item) => item.id == id);
     final updated = await _storageService.deleteTransaction(id);
     setState(() {
@@ -155,6 +176,19 @@ class _MainScaffoldState extends State<MainScaffold> {
   }
 
   void _openAddTransactionModal([Transaction? existing]) {
+    if (existing != null &&
+        _repayments.any((r) => r.interestTransactionId == existing.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This transaction is linked to a Loan Repayment. Please edit it from Loan Management.',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -165,6 +199,8 @@ class _MainScaffoldState extends State<MainScaffold> {
         accounts: _accounts,
         allTransactions: _transactions,
         transfers: _transfers,
+        loans: _loans,
+        repayments: _repayments,
         onSave: (tx) {
           if (existing != null) {
             _updateTransaction(tx);
@@ -278,6 +314,8 @@ class _MainScaffoldState extends State<MainScaffold> {
                       isMoneyAccountsEnabled: _isMoneyAccountsEnabled,
                       accounts: _accounts,
                       transfers: _transfers,
+                      loans: _loans,
+                      repayments: _repayments,
                       onRefresh: _loadAll,
                     ),
                     // 1: Calendar Tab
@@ -302,18 +340,26 @@ class _MainScaffoldState extends State<MainScaffold> {
                       currentThemeMode: widget.currentThemeMode,
                       onThemeModeChanged: widget.onThemeModeChanged,
                       transactions: _transactions,
+                      accounts: _accounts,
+                      transfers: _transfers,
+                      loans: _loans,
+                      repayments: _repayments,
                       onUpdateTransaction: _openAddTransactionModal,
                       onDataChanged: () async {
                         final list = await _storageService.loadTransactions();
                         final isEnabled = await _storageService.isMoneyAccountsEnabled();
                         final accounts = await _storageService.loadAccounts();
                         final transfers = await _storageService.loadTransfers();
+                        final loans = await _storageService.loadLoans();
+                        final repayments = await _storageService.loadLoanRepayments();
                         if (!mounted) return;
                         setState(() {
                           _transactions = list;
                           _isMoneyAccountsEnabled = isEnabled;
                           _accounts = accounts;
                           _transfers = transfers;
+                          _loans = loans;
+                          _repayments = repayments;
                         });
                       },
                     ),

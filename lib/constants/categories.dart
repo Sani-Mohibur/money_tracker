@@ -94,6 +94,8 @@ class CategoryItem {
         return Icons.more_horiz_rounded;
       case 'transfer_fees':
         return Icons.price_change_rounded;
+      case 'loan_interest':
+        return Icons.percent_rounded;
 
       // Default income icons
       case 'salary':
@@ -144,6 +146,7 @@ class CategoryItem {
     MapEntry('cafe', Icons.local_cafe_rounded),
     MapEntry('bills', Icons.receipt_long_rounded),
     MapEntry('transfer_fees', Icons.price_change_rounded),
+    MapEntry('loan_interest', Icons.percent_rounded),
     MapEntry('transport', Icons.directions_car_rounded),
     MapEntry('car', Icons.car_rental_rounded),
     MapEntry('travel', Icons.flight_takeoff_rounded),
@@ -219,6 +222,13 @@ class AppCategories {
       icon: Icons.price_change_rounded,
       color: Color(0xFF64748B), // Slate
       iconKey: 'transfer_fees',
+    ),
+    CategoryItem(
+      id: 'loan_interest',
+      name: 'Loan Interest',
+      icon: Icons.percent_rounded,
+      color: Color(0xFFD97706), // Amber
+      iconKey: 'loan_interest',
     ),
     CategoryItem(
       id: 'entertainment',

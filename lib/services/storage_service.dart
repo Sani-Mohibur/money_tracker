@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/categories.dart';
 import '../models/account_transfer.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 
@@ -19,6 +21,8 @@ class StorageService {
   static const String _moneyAccountsEnabledKey = 'pref_money_accounts_enabled';
   static const String _accountsKey = 'saved_accounts_v1';
   static const String _accountTransfersKey = 'saved_account_transfers_v1';
+  static const String _loansKey = 'saved_loans_v1';
+  static const String _loanRepaymentsKey = 'saved_loan_repayments_v1';
 
   /// Loads all transactions from local persistent storage.
   /// Preserves existing user data. Existing records without allocations
@@ -337,6 +341,204 @@ class StorageService {
   }
 
   // =========================================================================
+  // LOANS & LOAN REPAYMENTS PERSISTENCE
+  // =========================================================================
+
+  /// Loads all loans from persistent storage.
+  Future<List<Loan>> loadLoans() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonString = prefs.getString(_loansKey);
+      if (jsonString == null || jsonString.isEmpty) {
+        return [];
+      }
+      final List<dynamic> decodedList = json.decode(jsonString) as List<dynamic>;
+      final loans = decodedList
+          .map((item) => Loan.fromMap(item as Map<String, dynamic>))
+          .toList();
+      loans.sort((a, b) => b.date.compareTo(a.date));
+      return loans;
+    } catch (e, stack) {
+      debugPrint('Error loading loans: $e\n$stack');
+      return [];
+    }
+  }
+
+  /// Persists loans list to storage.
+  Future<bool> saveLoans(List<Loan> loans) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> mapList =
+          loans.map((l) => l.toMap()).toList();
+      final String jsonString = json.encode(mapList);
+      return await prefs.setString(_loansKey, jsonString);
+    } catch (e, stack) {
+      debugPrint('Error saving loans: $e\n$stack');
+      return false;
+    }
+  }
+
+  /// Adds a loan and updates storage.
+  Future<List<Loan>> addLoan(Loan loan) async {
+    final current = await loadLoans();
+    final updated = [loan, ...current];
+    updated.sort((a, b) => b.date.compareTo(a.date));
+    await saveLoans(updated);
+    return updated;
+  }
+
+  /// Updates an existing loan.
+  Future<List<Loan>> updateLoan(Loan loan) async {
+    final current = await loadLoans();
+    final updated = current.map((l) => l.id == loan.id ? loan : l).toList();
+    updated.sort((a, b) => b.date.compareTo(a.date));
+    await saveLoans(updated);
+    return updated;
+  }
+
+  /// Archives or unarchives a loan.
+  Future<List<Loan>> archiveLoan(String id, bool archive) async {
+    final current = await loadLoans();
+    final updated = current.map((l) {
+      if (l.id == id) {
+        return l.copyWith(isArchived: archive);
+      }
+      return l;
+    }).toList();
+    await saveLoans(updated);
+    return updated;
+  }
+
+  /// Loads all loan repayments, optionally filtered by loanId.
+  Future<List<LoanRepayment>> loadLoanRepayments([String? loanId]) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonString = prefs.getString(_loanRepaymentsKey);
+      if (jsonString == null || jsonString.isEmpty) {
+        return [];
+      }
+      final List<dynamic> decodedList = json.decode(jsonString) as List<dynamic>;
+      var repayments = decodedList
+          .map((item) => LoanRepayment.fromMap(item as Map<String, dynamic>))
+          .toList();
+      if (loanId != null && loanId.isNotEmpty) {
+        repayments = repayments.where((r) => r.loanId == loanId).toList();
+      }
+      repayments.sort((a, b) => b.date.compareTo(a.date));
+      return repayments;
+    } catch (e, stack) {
+      debugPrint('Error loading loan repayments: $e\n$stack');
+      return [];
+    }
+  }
+
+  /// Persists loan repayments list to storage.
+  Future<bool> saveLoanRepayments(List<LoanRepayment> repayments) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> mapList =
+          repayments.map((r) => r.toMap()).toList();
+      final String jsonString = json.encode(mapList);
+      return await prefs.setString(_loanRepaymentsKey, jsonString);
+    } catch (e, stack) {
+      debugPrint('Error saving loan repayments: $e\n$stack');
+      return false;
+    }
+  }
+
+  /// Atomically saves or updates a LoanRepayment together with its linked interest expense transaction.
+  /// Prevents inconsistencies where a repayment exists without its interest transaction, or vice-versa.
+  Future<void> saveRepaymentWithInterest({
+    required LoanRepayment repayment,
+    Transaction? interestTransaction,
+  }) async {
+    final repayments = await loadLoanRepayments();
+    final transactions = await loadTransactions();
+
+    // 1. Manage linked interest transaction in transactions list
+    List<Transaction> updatedTransactions = List.from(transactions);
+    final existingRep = repayments.where((r) => r.id == repayment.id).firstOrNull;
+    final oldInterestTxId = existingRep?.interestTransactionId;
+
+    if (interestTransaction != null) {
+      if (oldInterestTxId != null && oldInterestTxId != interestTransaction.id) {
+        updatedTransactions.removeWhere((t) => t.id == oldInterestTxId);
+      }
+      final existingTxIndex =
+          updatedTransactions.indexWhere((t) => t.id == interestTransaction.id);
+      if (existingTxIndex >= 0) {
+        updatedTransactions[existingTxIndex] = interestTransaction;
+      } else {
+        updatedTransactions = [interestTransaction, ...updatedTransactions];
+      }
+    } else if (oldInterestTxId != null) {
+      // Interest was changed to 0; remove the old interest transaction
+      updatedTransactions.removeWhere((t) => t.id == oldInterestTxId);
+    }
+
+    // 2. Manage repayment record in repayments list
+    List<LoanRepayment> updatedRepayments = List.from(repayments);
+    final existingRepIndex =
+        updatedRepayments.indexWhere((r) => r.id == repayment.id);
+    if (existingRepIndex >= 0) {
+      updatedRepayments[existingRepIndex] = repayment;
+    } else {
+      updatedRepayments = [repayment, ...updatedRepayments];
+    }
+    updatedRepayments.sort((a, b) => b.date.compareTo(a.date));
+
+    // 3. Persist both atomically
+    await saveTransactions(updatedTransactions);
+    await saveLoanRepayments(updatedRepayments);
+  }
+
+  /// Atomically deletes a LoanRepayment and removes its linked interest expense transaction.
+  Future<void> deleteRepaymentWithInterest(String repaymentId) async {
+    final repayments = await loadLoanRepayments();
+    final transactions = await loadTransactions();
+
+    final repaymentToDelete =
+        repayments.where((r) => r.id == repaymentId).firstOrNull;
+
+    final updatedRepayments =
+        repayments.where((r) => r.id != repaymentId).toList();
+    List<Transaction> updatedTransactions = transactions;
+
+    if (repaymentToDelete != null &&
+        repaymentToDelete.interestTransactionId != null) {
+      updatedTransactions = transactions
+          .where((t) => t.id != repaymentToDelete.interestTransactionId)
+          .toList();
+    }
+
+    await saveTransactions(updatedTransactions);
+    await saveLoanRepayments(updatedRepayments);
+  }
+
+  /// Atomically deletes a Loan and all its associated repayments and linked interest transactions.
+  Future<void> deleteLoanWithRepayments(String loanId) async {
+    final loans = await loadLoans();
+    final repayments = await loadLoanRepayments();
+    final transactions = await loadTransactions();
+
+    final repaymentsToDelete = repayments.where((r) => r.loanId == loanId).toList();
+    final interestTxIdsToDelete = repaymentsToDelete
+        .map((r) => r.interestTransactionId)
+        .whereType<String>()
+        .toSet();
+
+    final updatedLoans = loans.where((l) => l.id != loanId).toList();
+    final updatedRepayments = repayments.where((r) => r.loanId != loanId).toList();
+    final updatedTransactions = transactions
+        .where((t) => !interestTxIdsToDelete.contains(t.id))
+        .toList();
+
+    await saveTransactions(updatedTransactions);
+    await saveLoanRepayments(updatedRepayments);
+    await saveLoans(updatedLoans);
+  }
+
+  // =========================================================================
   // CATEGORIES MANAGEMENT & PERSISTENCE
   // =========================================================================
 
@@ -397,6 +599,23 @@ class StorageService {
             icon: Icons.price_change_rounded,
             color: Color(0xFF64748B),
             iconKey: 'transfer_fees',
+          ),
+        );
+      }
+
+      // Ensure "Loan Interest" is present without duplicates
+      final hasLoanInterest = loadedExpense.any(
+        (c) => c.name.trim().toLowerCase() == 'loan interest',
+      );
+      if (!hasLoanInterest) {
+        loadedExpense.insert(
+          5.clamp(0, loadedExpense.length),
+          const CategoryItem(
+            id: 'loan_interest',
+            name: 'Loan Interest',
+            icon: Icons.percent_rounded,
+            color: Color(0xFFD97706),
+            iconKey: 'loan_interest',
           ),
         );
       }

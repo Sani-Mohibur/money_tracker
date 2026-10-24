@@ -54,6 +54,9 @@ class Formatters {
     return DateFormat('MMM d, yyyy').format(date);
   }
 
+  /// Formats date standard, e.g. "Oct 19, 2026"
+  static String formatDate(DateTime date) => formatFullDate(date);
+
   /// Formats Month and Year, e.g. "October 2026"
   static String formatMonthYear(DateTime date) {
     return DateFormat('MMMM yyyy').format(date);

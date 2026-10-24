@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/account_transfer.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
+import '../services/account_service.dart';
 import '../services/currency_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/account_breakdown_sheet.dart';
@@ -21,6 +24,8 @@ class HomeTab extends StatelessWidget {
   final bool isMoneyAccountsEnabled;
   final List<MoneyAccount> accounts;
   final List<AccountTransfer> transfers;
+  final List<Loan> loans;
+  final List<LoanRepayment> repayments;
   final Future<void> Function()? onRefresh;
 
   const HomeTab({
@@ -34,6 +39,8 @@ class HomeTab extends StatelessWidget {
     this.isMoneyAccountsEnabled = false,
     this.accounts = const [],
     this.transfers = const [],
+    this.loans = const [],
+    this.repayments = const [],
     this.onRefresh,
   });
 
@@ -48,6 +55,8 @@ class HomeTab extends StatelessWidget {
         allTransactions: transactions,
         accounts: accounts,
         transfers: transfers,
+        loans: loans,
+        repayments: repayments,
         onTransactionTap: onUpdateTransaction,
       ),
     );
@@ -63,6 +72,8 @@ class HomeTab extends StatelessWidget {
         allTransactions: transactions,
         accounts: accounts,
         transfers: transfers,
+        loans: loans,
+        repayments: repayments,
         onTransactionTap: onUpdateTransaction,
       ),
     );
@@ -117,14 +128,27 @@ class HomeTab extends StatelessWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: BalanceCard(
-                totalIncome: totalIncome,
-                totalExpenses: totalExpenses,
-                currencyCode: defaultCurrency,
-                subtitle: 'All-time net balance in $defaultCurrency',
-                onIncomeTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, true) : null,
-                onExpenseTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, false) : null,
-                onAllocationBreakdownTap: isMoneyAccountsEnabled ? () => _openAllocationBreakdown(context) : null,
+              child: Builder(
+                builder: (context) {
+                  final accountService = AccountService(currencyService);
+                  final overallBalance = accountService.calculateOverallBalance(
+                    transactions,
+                    defaultCurrency,
+                    loans,
+                    repayments,
+                  );
+
+                  return BalanceCard(
+                    totalIncome: totalIncome,
+                    totalExpenses: totalExpenses,
+                    customNetBalance: overallBalance,
+                    currencyCode: defaultCurrency,
+                    subtitle: 'All-time net balance in $defaultCurrency',
+                    onIncomeTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, true) : null,
+                    onExpenseTap: isMoneyAccountsEnabled ? () => _openBreakdown(context, false) : null,
+                    onAllocationBreakdownTap: isMoneyAccountsEnabled ? () => _openAllocationBreakdown(context) : null,
+                  );
+                },
               ),
             ),
           ),
@@ -310,15 +334,6 @@ class HomeTab extends StatelessWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                         textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: onOpenAddSheet,
-                        icon: const Icon(Icons.add_rounded, size: 18),
-                        label: const Text('Add Transaction'),
-                        style: FilledButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
                       ),
                     ],
                   ),

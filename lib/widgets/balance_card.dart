@@ -5,6 +5,7 @@ import '../utils/formatters.dart';
 class BalanceCard extends StatelessWidget {
   final double totalIncome;
   final double totalExpenses;
+  final double? customNetBalance;
   final String currencyCode;
   final String? subtitle;
   final VoidCallback? onIncomeTap;
@@ -15,6 +16,7 @@ class BalanceCard extends StatelessWidget {
     super.key,
     required this.totalIncome,
     required this.totalExpenses,
+    this.customNetBalance,
     required this.currencyCode,
     this.subtitle,
     this.onIncomeTap,
@@ -22,7 +24,7 @@ class BalanceCard extends StatelessWidget {
     this.onAllocationBreakdownTap,
   });
 
-  double get netBalance => totalIncome - totalExpenses;
+  double get netBalance => customNetBalance ?? (totalIncome - totalExpenses);
 
   @override
   Widget build(BuildContext context) {

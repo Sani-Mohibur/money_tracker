@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../constants/categories.dart';
 import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/currency_service.dart';
@@ -9,6 +11,7 @@ import '../services/storage_service.dart';
 import '../utils/formatters.dart';
 import 'account_management_screen.dart';
 import 'category_management_screen.dart';
+import 'loan_management_screen.dart';
 
 /// Settings tab for managing default currency, exchange rates,
 /// transaction categories, money accounts, theme mode, and data maintenance.
@@ -17,6 +20,10 @@ class SettingsTab extends StatefulWidget {
   final Function(ThemeMode) onThemeModeChanged;
   final ThemeMode currentThemeMode;
   final List<Transaction> transactions;
+  final List<MoneyAccount> accounts;
+  final List<AccountTransfer> transfers;
+  final List<Loan> loans;
+  final List<LoanRepayment> repayments;
   final Function(Transaction)? onUpdateTransaction;
 
   const SettingsTab({
@@ -25,6 +32,10 @@ class SettingsTab extends StatefulWidget {
     required this.onThemeModeChanged,
     required this.currentThemeMode,
     this.transactions = const [],
+    this.accounts = const [],
+    this.transfers = const [],
+    this.loans = const [],
+    this.repayments = const [],
     this.onUpdateTransaction,
   });
 
@@ -39,22 +50,49 @@ class _SettingsTabState extends State<SettingsTab> {
   bool _isMoneyAccountsEnabled = false;
   List<MoneyAccount> _accounts = [];
   List<AccountTransfer> _transfers = [];
+  List<Loan> _loans = [];
+  List<LoanRepayment> _repayments = [];
 
   @override
   void initState() {
     super.initState();
+    _accounts = List.from(widget.accounts);
+    _transfers = List.from(widget.transfers);
+    _loans = List.from(widget.loans);
+    _repayments = List.from(widget.repayments);
     _loadMoneyAccountsData();
+  }
+
+  @override
+  void didUpdateWidget(covariant SettingsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accounts != widget.accounts) {
+      _accounts = List.from(widget.accounts);
+    }
+    if (oldWidget.transfers != widget.transfers) {
+      _transfers = List.from(widget.transfers);
+    }
+    if (oldWidget.loans != widget.loans) {
+      _loans = List.from(widget.loans);
+    }
+    if (oldWidget.repayments != widget.repayments) {
+      _repayments = List.from(widget.repayments);
+    }
   }
 
   Future<void> _loadMoneyAccountsData() async {
     final enabled = await _storageService.isMoneyAccountsEnabled();
     final accounts = await _storageService.loadAccounts();
     final transfers = await _storageService.loadTransfers();
+    final loans = await _storageService.loadLoans();
+    final repayments = await _storageService.loadLoanRepayments();
     if (!mounted) return;
     setState(() {
       _isMoneyAccountsEnabled = enabled;
       _accounts = accounts;
       _transfers = transfers;
+      _loans = loans;
+      _repayments = repayments;
     });
   }
 
@@ -196,6 +234,54 @@ class _SettingsTabState extends State<SettingsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Section: App Appearance
+          _buildSectionHeader('APPEARANCE'),
+          _buildCard(
+            theme: theme,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.palette_outlined),
+                      SizedBox(width: 12),
+                      Text('Theme Mode', style: TextStyle(fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                  SegmentedButton<ThemeMode>(
+                    segments: const [
+                      ButtonSegment(
+                        value: ThemeMode.light,
+                        icon: Icon(Icons.light_mode_outlined, size: 16),
+                        label: Text('Light'),
+                      ),
+                      ButtonSegment(
+                        value: ThemeMode.dark,
+                        icon: Icon(Icons.dark_mode_outlined, size: 16),
+                        label: Text('Dark'),
+                      ),
+                    ],
+                    selected: {
+                      widget.currentThemeMode == ThemeMode.dark
+                          ? ThemeMode.dark
+                          : ThemeMode.light,
+                    },
+                    onSelectionChanged: (set) {
+                      widget.onThemeModeChanged(set.first);
+                    },
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Section 1: Currency & Exchange Rates
           _buildSectionHeader('CURRENCY & EXCHANGE RATES'),
           _buildCard(
@@ -362,6 +448,8 @@ class _SettingsTabState extends State<SettingsTab> {
                             transactions: widget.transactions,
                             accounts: _accounts,
                             transfers: _transfers,
+                            loans: _loans,
+                            repayments: _repayments,
                             onUpdateTransaction: widget.onUpdateTransaction ?? (_) {},
                             onDataChanged: () async {
                               await _loadMoneyAccountsData();
@@ -392,6 +480,8 @@ class _SettingsTabState extends State<SettingsTab> {
                             transactions: widget.transactions,
                             accounts: _accounts,
                             transfers: _transfers,
+                            loans: _loans,
+                            repayments: _repayments,
                             onUpdateTransaction: widget.onUpdateTransaction ?? (_) {},
                             onDataChanged: () async {
                               await _loadMoneyAccountsData();
@@ -410,50 +500,45 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           const SizedBox(height: 24),
 
-          // Section 3: App Appearance
-          _buildSectionHeader('APPEARANCE'),
+          // Section 3.5: Loan Management
+          _buildSectionHeader('LOAN MANAGEMENT'),
           _buildCard(
             theme: theme,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.palette_outlined),
-                      SizedBox(width: 12),
-                      Text('Theme Mode', style: TextStyle(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  SegmentedButton<ThemeMode>(
-                    segments: const [
-                      ButtonSegment(
-                        value: ThemeMode.light,
-                        icon: Icon(Icons.light_mode_outlined, size: 16),
-                        label: Text('Light'),
-                      ),
-                      ButtonSegment(
-                        value: ThemeMode.dark,
-                        icon: Icon(Icons.dark_mode_outlined, size: 16),
-                        label: Text('Dark'),
-                      ),
-                    ],
-                    selected: {
-                      widget.currentThemeMode == ThemeMode.dark
-                          ? ThemeMode.dark
-                          : ThemeMode.light,
-                    },
-                    onSelectionChanged: (set) {
-                      widget.onThemeModeChanged(set.first);
-                    },
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            child: ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.real_estate_agent_outlined, color: theme.colorScheme.primary, size: 20),
+              ),
+              title: const Text('Loan Management', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                _loans.isEmpty
+                    ? 'Track borrowings, repayments, and liabilities'
+                    : '${_loans.length} loan(s) recorded',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (ctx) => LoanManagementScreen(
+                      transactions: widget.transactions,
+                      accounts: _accounts,
+                      transfers: _transfers,
+                      isMoneyAccountsEnabled: _isMoneyAccountsEnabled,
+                      onDataChanged: () async {
+                        await _loadMoneyAccountsData();
+                        widget.onDataChanged();
+                      },
                     ),
                   ),
-                ],
-              ),
+                );
+                await _loadMoneyAccountsData();
+                if (mounted) setState(() {});
+              },
             ),
           ),
           const SizedBox(height: 24),

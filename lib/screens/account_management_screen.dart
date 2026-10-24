@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../models/account_allocation.dart';
 import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/account_service.dart';
@@ -17,6 +19,8 @@ class AccountManagementScreen extends StatefulWidget {
   final List<Transaction> transactions;
   final List<MoneyAccount> accounts;
   final List<AccountTransfer> transfers;
+  final List<Loan> loans;
+  final List<LoanRepayment> repayments;
   final Function(Transaction) onUpdateTransaction;
   final VoidCallback onDataChanged;
 
@@ -25,6 +29,8 @@ class AccountManagementScreen extends StatefulWidget {
     required this.transactions,
     required this.accounts,
     required this.transfers,
+    this.loans = const [],
+    this.repayments = const [],
     required this.onUpdateTransaction,
     required this.onDataChanged,
   });
@@ -43,6 +49,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
   late List<MoneyAccount> _accounts;
   late List<AccountTransfer> _transfers;
   late List<Transaction> _transactions;
+  late List<Loan> _loans;
+  late List<LoanRepayment> _repayments;
 
   @override
   void initState() {
@@ -51,7 +59,26 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
     _accounts = List.from(widget.accounts);
     _transfers = List.from(widget.transfers);
     _transactions = List.from(widget.transactions);
+    _loans = List.from(widget.loans);
+    _repayments = List.from(widget.repayments);
     _tabController = TabController(length: 3, vsync: this);
+    _loadAllData();
+  }
+
+  Future<void> _loadAllData() async {
+    final a = await _storageService.loadAccounts();
+    final tf = await _storageService.loadTransfers();
+    final tx = await _storageService.loadTransactions();
+    final l = await _storageService.loadLoans();
+    final r = await _storageService.loadLoanRepayments();
+    if (!mounted) return;
+    setState(() {
+      if (a.isNotEmpty || _accounts.isEmpty) _accounts = a.isNotEmpty ? a : _accounts;
+      if (tf.isNotEmpty || _transfers.isEmpty) _transfers = tf.isNotEmpty ? tf : _transfers;
+      if (tx.isNotEmpty || _transactions.isEmpty) _transactions = tx.isNotEmpty ? tx : _transactions;
+      if (l.isNotEmpty || _loans.isEmpty) _loans = l.isNotEmpty ? l : _loans;
+      if (r.isNotEmpty || _repayments.isEmpty) _repayments = r.isNotEmpty ? r : _repayments;
+    });
   }
 
   @override
@@ -65,6 +92,12 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
     }
     if (oldWidget.transactions != widget.transactions) {
       _transactions = List.from(widget.transactions);
+    }
+    if (oldWidget.loans != widget.loans) {
+      _loans = List.from(widget.loans);
+    }
+    if (oldWidget.repayments != widget.repayments) {
+      _repayments = List.from(widget.repayments);
     }
   }
 
@@ -310,6 +343,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
       account.id,
       _transactions,
       _transfers,
+      loans: _loans,
+      repayments: _repayments,
     );
 
     if (hasHistory) {
@@ -435,6 +470,8 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
             fromAccount,
             _transactions,
             _transfers,
+            loans: _loans,
+            repayments: _repayments,
           );
           final availableBalance = _accountService.getAvailableFundsForTransfer(
             account: fromAccount,
@@ -953,9 +990,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
                                 style: const TextStyle(fontSize: 12),
                               ),
                               trailing: const Icon(Icons.edit_note_rounded),
-                              onTap: () {
+                              onTap: () async {
                                 Navigator.of(ctx).pop();
                                 widget.onUpdateTransaction(tx);
+                                await _loadAllData();
+                                widget.onDataChanged();
                               },
                             ),
                           );
@@ -983,9 +1022,16 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
       _accounts,
       _transactions,
       _transfers,
+      loans: _loans,
+      repayments: _repayments,
     );
 
-    final overallBalance = _accountService.calculateOverallBalance(_transactions);
+    final overallBalance = _accountService.calculateOverallBalance(
+      _transactions,
+      defaultCurrency,
+      _loans,
+      _repayments,
+    );
     final combinedActiveAccounts = _accountService.calculateCombinedActiveAccountsBalance(
       _accounts,
       accountBalances,
@@ -1263,10 +1309,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
   ) {
     if (list.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 isArchivedTab ? Icons.archive_outlined : Icons.account_balance_wallet_outlined,
@@ -1455,10 +1502,11 @@ class _AccountManagementScreenState extends State<AccountManagementScreen>
   Widget _buildTransfersList(ThemeData theme) {
     if (_transfers.isEmpty) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.swap_horiz_rounded,

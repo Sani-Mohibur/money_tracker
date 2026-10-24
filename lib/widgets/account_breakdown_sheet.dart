@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import '../services/account_service.dart';
@@ -17,6 +19,8 @@ class AccountBreakdownSheet extends StatefulWidget {
   final List<Transaction> allTransactions;
   final List<MoneyAccount> accounts;
   final List<AccountTransfer> transfers;
+  final List<Loan> loans;
+  final List<LoanRepayment> repayments;
   final Function(Transaction)? onTransactionTap;
 
   const AccountBreakdownSheet({
@@ -26,6 +30,8 @@ class AccountBreakdownSheet extends StatefulWidget {
     required this.allTransactions,
     required this.accounts,
     this.transfers = const [],
+    this.loans = const [],
+    this.repayments = const [],
     this.onTransactionTap,
   });
 
@@ -38,6 +44,8 @@ class _AccountBreakdownSheetState extends State<AccountBreakdownSheet> {
   final StorageService _storageService = StorageService();
   late final AccountService _accountService;
   late List<AccountTransfer> _transfers;
+  late List<Loan> _loans;
+  late List<LoanRepayment> _repayments;
   bool _filterCurrentMonth = true;
 
   @override
@@ -45,17 +53,27 @@ class _AccountBreakdownSheetState extends State<AccountBreakdownSheet> {
     super.initState();
     _accountService = AccountService(_currencyService);
     _transfers = List.from(widget.transfers);
-    _loadFreshTransfers();
+    _loans = List.from(widget.loans);
+    _repayments = List.from(widget.repayments);
+    _loadFreshData();
   }
 
-  Future<void> _loadFreshTransfers() async {
-    final fresh = await _storageService.loadTransfers();
+  Future<void> _loadFreshData() async {
+    final freshTransfers = await _storageService.loadTransfers();
+    final freshLoans = await _storageService.loadLoans();
+    final freshRepayments = await _storageService.loadLoanRepayments();
     if (!mounted) return;
-    if (_transfers.length != fresh.length || _transfers != fresh) {
-      setState(() {
-        _transfers = fresh;
-      });
-    }
+    setState(() {
+      if (freshTransfers.isNotEmpty || widget.transfers.isEmpty) {
+        _transfers = freshTransfers;
+      }
+      if (freshLoans.isNotEmpty || widget.loans.isEmpty) {
+        _loans = freshLoans;
+      }
+      if (freshRepayments.isNotEmpty || widget.repayments.isEmpty) {
+        _repayments = freshRepayments;
+      }
+    });
   }
 
   @override
@@ -63,6 +81,12 @@ class _AccountBreakdownSheetState extends State<AccountBreakdownSheet> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.transfers != widget.transfers) {
       _transfers = List.from(widget.transfers);
+    }
+    if (oldWidget.loans != widget.loans) {
+      _loans = List.from(widget.loans);
+    }
+    if (oldWidget.repayments != widget.repayments) {
+      _repayments = List.from(widget.repayments);
     }
   }
 
@@ -133,6 +157,8 @@ class _AccountBreakdownSheetState extends State<AccountBreakdownSheet> {
       widget.accounts,
       widget.allTransactions,
       _transfers,
+      loans: _loans,
+      repayments: _repayments,
     );
 
     final Map<String, double> displayBalances = {};

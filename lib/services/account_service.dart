@@ -2,6 +2,8 @@ import 'dart:math';
 import '../models/account_allocation.dart';
 import '../models/account_transfer.dart';
 import '../models/currency.dart';
+import '../models/loan.dart';
+import '../models/loan_repayment.dart';
 import '../models/money_account.dart';
 import '../models/transaction.dart';
 import 'currency_service.dart';
@@ -16,12 +18,14 @@ class AccountService {
       : _currencyService = currencyService ?? CurrencyService();
 
   /// Calculates the current balance of a specific account in its native currency.
-  /// Includes transaction allocations and account transfers.
+  /// Includes transaction allocations, account transfers, loan receipts, and loan repayments.
   double calculateAccountBalance(
     MoneyAccount account,
     List<Transaction> transactions,
-    List<AccountTransfer> transfers,
-  ) {
+    List<AccountTransfer> transfers, {
+    List<Loan> loans = const [],
+    List<LoanRepayment> repayments = const [],
+  }) {
     double balance = 0.0;
 
     // 1. Transaction allocations
@@ -52,6 +56,34 @@ class AccountService {
       }
     }
 
+    // 3. Loan net proceeds allocations (credits account balance)
+    for (final loan in loans) {
+      for (final alloc in loan.allocations) {
+        if (alloc.accountId == account.id && alloc.amount > 0) {
+          final converted = _currencyService.convert(
+            alloc.amount,
+            loan.currency,
+            account.currency,
+          );
+          balance += converted;
+        }
+      }
+    }
+
+    // 4. Loan repayments allocations (debits account balance)
+    for (final repayment in repayments) {
+      for (final alloc in repayment.allocations) {
+        if (alloc.accountId == account.id && alloc.amount > 0) {
+          final converted = _currencyService.convert(
+            alloc.amount,
+            repayment.currency,
+            account.currency,
+          );
+          balance -= converted;
+        }
+      }
+    }
+
     // Decimal rounding consistent with account currency
     final currency = AppCurrency.fromCode(account.currency);
     return roundCurrency(balance, currency.decimalDigits);
@@ -61,14 +93,18 @@ class AccountService {
   Map<String, double> calculateAllBalances(
     List<MoneyAccount> accounts,
     List<Transaction> transactions,
-    List<AccountTransfer> transfers,
-  ) {
+    List<AccountTransfer> transfers, {
+    List<Loan> loans = const [],
+    List<LoanRepayment> repayments = const [],
+  }) {
     final Map<String, double> result = {};
     for (final account in accounts) {
       result[account.id] = calculateAccountBalance(
         account,
         transactions,
         transfers,
+        loans: loans,
+        repayments: repayments,
       );
     }
     return result;
@@ -107,12 +143,14 @@ class AccountService {
     return roundCurrency(available, currency.decimalDigits);
   }
 
-  /// Checks if an account has any associated transaction history or transfers.
+  /// Checks if an account has any associated transaction history, transfers, or loan records.
   bool hasAccountHistory(
     String accountId,
     List<Transaction> transactions,
-    List<AccountTransfer> transfers,
-  ) {
+    List<AccountTransfer> transfers, {
+    List<Loan> loans = const [],
+    List<LoanRepayment> repayments = const [],
+  }) {
     final hasTx = transactions.any(
       (tx) => tx.allocations.any((a) => a.accountId == accountId),
     );
@@ -121,13 +159,30 @@ class AccountService {
     final hasTf = transfers.any(
       (t) => t.fromAccountId == accountId || t.toAccountId == accountId,
     );
-    return hasTf;
+    if (hasTf) return true;
+
+    final hasLoan = loans.any(
+      (l) => l.allocations.any((a) => a.accountId == accountId),
+    );
+    if (hasLoan) return true;
+
+    final hasRepayment = repayments.any(
+      (r) => r.allocations.any((a) => a.accountId == accountId),
+    );
+    return hasRepayment;
   }
 
-  /// Calculates overall financial balance from all transactions in default currency.
+  /// Calculates overall financial balance from all transactions, loans, and repayments in default currency.
+  /// - Income transactions: +amount
+  /// - Expense transactions (including loan interest): -amount
+  /// - Loans net proceeds: +netAmountReceived
+  /// - Repayments: -principalAmount
+  /// (Total cash outflow of repayment equals principal + interest; interest is in transactions)
   double calculateOverallBalance(
     List<Transaction> transactions, [
     String? targetCurrencyCode,
+    List<Loan> loans = const [],
+    List<LoanRepayment> repayments = const [],
   ]) {
     final targetCurrency = targetCurrencyCode ?? _currencyService.defaultCurrencyCode;
     double total = 0.0;
@@ -143,6 +198,24 @@ class AccountService {
       } else {
         total -= converted;
       }
+    }
+
+    for (final loan in loans) {
+      final converted = _currencyService.convert(
+        loan.netAmountReceived,
+        loan.currency,
+        targetCurrency,
+      );
+      total += converted;
+    }
+
+    for (final repayment in repayments) {
+      final converted = _currencyService.convert(
+        repayment.principalAmount,
+        repayment.currency,
+        targetCurrency,
+      );
+      total -= converted;
     }
 
     final currency = AppCurrency.fromCode(targetCurrency);
@@ -321,6 +394,247 @@ class AccountService {
     return !existingAccounts.any(
       (a) => a.id != excludeAccountId && a.name.trim().toLowerCase() == clean,
     );
+  }
+
+  /// Calculates available funds for an account when creating or editing a loan.
+  /// When editing [existingLoan], reverses its previous proceeds credited to this account.
+  double getAvailableFundsForLoan({
+    required MoneyAccount account,
+    required double currentBalance,
+    Loan? existingLoan,
+  }) {
+    double available = currentBalance;
+    if (existingLoan != null) {
+      for (final alloc in existingLoan.allocations) {
+        if (alloc.accountId == account.id && alloc.amount > 0) {
+          final converted = _currencyService.convert(
+            alloc.amount,
+            existingLoan.currency,
+            account.currency,
+          );
+          available -= converted;
+        }
+      }
+    }
+    final currency = AppCurrency.fromCode(account.currency);
+    return roundCurrency(available, currency.decimalDigits);
+  }
+
+  /// Calculates available funds for an account when creating or editing a repayment.
+  /// When editing [existingRepayment], reverses its previous debit to free up available funds.
+  double getAvailableFundsForRepayment({
+    required MoneyAccount account,
+    required double currentBalance,
+    LoanRepayment? existingRepayment,
+  }) {
+    double available = currentBalance;
+    if (existingRepayment != null) {
+      for (final alloc in existingRepayment.allocations) {
+        if (alloc.accountId == account.id && alloc.amount > 0) {
+          final converted = _currencyService.convert(
+            alloc.amount,
+            existingRepayment.currency,
+            account.currency,
+          );
+          available += converted;
+        }
+      }
+    }
+    final currency = AppCurrency.fromCode(account.currency);
+    return roundCurrency(available, currency.decimalDigits);
+  }
+
+  /// Outstanding principal of a specific loan in its native currency.
+  double calculateOutstandingPrincipal(
+    Loan loan,
+    List<LoanRepayment> repayments,
+  ) {
+    final loanRepayments = repayments.where((r) => r.loanId == loan.id);
+    final totalPrincipalRepaid = loanRepayments.fold(
+      0.0,
+      (sum, r) => sum + r.principalAmount,
+    );
+    final diff = loan.principal - totalPrincipalRepaid;
+    final currency = AppCurrency.fromCode(loan.currency);
+    final rounded = roundCurrency(diff, currency.decimalDigits);
+    return rounded > 0.000001 ? rounded : 0.0;
+  }
+
+  /// Total principal repaid for a specific loan in its native currency.
+  double calculateTotalPrincipalRepaid(
+    Loan loan,
+    List<LoanRepayment> repayments,
+  ) {
+    final loanRepayments = repayments.where((r) => r.loanId == loan.id);
+    final total = loanRepayments.fold(0.0, (sum, r) => sum + r.principalAmount);
+    final currency = AppCurrency.fromCode(loan.currency);
+    return roundCurrency(total, currency.decimalDigits);
+  }
+
+  /// Total interest paid for a specific loan in its native currency.
+  double calculateTotalInterestPaid(
+    Loan loan,
+    List<LoanRepayment> repayments,
+  ) {
+    final loanRepayments = repayments.where((r) => r.loanId == loan.id);
+    final total = loanRepayments.fold(0.0, (sum, r) => sum + r.interestAmount);
+    final currency = AppCurrency.fromCode(loan.currency);
+    return roundCurrency(total, currency.decimalDigits);
+  }
+
+  /// Repayment progress percentage (0.0 to 100.0) based on original loan principal.
+  /// Formula: (Total Principal Repaid ÷ Original Loan Principal) * 100
+  double calculateRepaymentProgress(
+    Loan loan,
+    List<LoanRepayment> repayments,
+  ) {
+    if (loan.principal <= 0) return 0.0;
+    final repaid = calculateTotalPrincipalRepaid(loan, repayments);
+    final progress = (repaid / loan.principal) * 100.0;
+    return progress.clamp(0.0, 100.0);
+  }
+
+  /// Whether a loan is fully repaid.
+  bool isLoanFullyRepaid(
+    Loan loan,
+    List<LoanRepayment> repayments,
+  ) {
+    return calculateOutstandingPrincipal(loan, repayments) <= 0.000001;
+  }
+
+  /// Total outstanding principal across all loans converted to target currency.
+  double calculateTotalOutstandingPrincipalAllLoans(
+    List<Loan> loans,
+    List<LoanRepayment> repayments, [
+    String? targetCurrencyCode,
+  ]) {
+    final targetCurrency =
+        targetCurrencyCode ?? _currencyService.defaultCurrencyCode;
+    double total = 0.0;
+    for (final loan in loans) {
+      if (!loan.isArchived) {
+        final outstanding = calculateOutstandingPrincipal(loan, repayments);
+        total += _currencyService.convert(
+          outstanding,
+          loan.currency,
+          targetCurrency,
+        );
+      }
+    }
+    final currency = AppCurrency.fromCode(targetCurrency);
+    return roundCurrency(total, currency.decimalDigits);
+  }
+
+  /// Total principal repaid across all loans converted to target currency.
+  double calculateTotalPrincipalRepaidAllLoans(
+    List<LoanRepayment> repayments, [
+    String? targetCurrencyCode,
+  ]) {
+    final targetCurrency =
+        targetCurrencyCode ?? _currencyService.defaultCurrencyCode;
+    double total = 0.0;
+    for (final rep in repayments) {
+      total += _currencyService.convert(
+        rep.principalAmount,
+        rep.currency,
+        targetCurrency,
+      );
+    }
+    final currency = AppCurrency.fromCode(targetCurrency);
+    return roundCurrency(total, currency.decimalDigits);
+  }
+
+  /// Total interest paid across all loans converted to target currency.
+  double calculateTotalInterestPaidAllLoans(
+    List<LoanRepayment> repayments, [
+    String? targetCurrencyCode,
+  ]) {
+    final targetCurrency =
+        targetCurrencyCode ?? _currencyService.defaultCurrencyCode;
+    double total = 0.0;
+    for (final rep in repayments) {
+      total += _currencyService.convert(
+        rep.interestAmount,
+        rep.currency,
+        targetCurrency,
+      );
+    }
+    final currency = AppCurrency.fromCode(targetCurrency);
+    return roundCurrency(total, currency.decimalDigits);
+  }
+
+  /// Validates loan creation or editing parameters.
+  String? validateLoan({
+    required String title,
+    required double principal,
+    required double fee,
+    required List<AccountAllocation> allocations,
+    double alreadyRepaidPrincipal = 0.0,
+  }) {
+    if (title.trim().isEmpty) {
+      return 'Please enter a loan title.';
+    }
+    if (principal <= 0) {
+      return 'Loan principal must be greater than zero.';
+    }
+    if (fee < 0) {
+      return 'Loan fee cannot be negative.';
+    }
+    if (fee >= principal) {
+      return 'Loan fee must be less than the loan principal.';
+    }
+    if (principal < alreadyRepaidPrincipal - 0.0001) {
+      return 'Principal cannot be less than already repaid principal (${alreadyRepaidPrincipal.toStringAsFixed(2)}).';
+    }
+    final netAmount = principal - fee;
+    final totalAlloc = allocations.fold(0.0, (s, a) => s + a.amount);
+    if (totalAlloc > netAmount + 0.0001) {
+      return 'Allocated amount exceeds net proceeds (${netAmount.toStringAsFixed(2)}).';
+    }
+    return null;
+  }
+
+  /// Validates loan repayment parameters.
+  String? validateRepayment({
+    required double principalAmount,
+    required double interestAmount,
+    required double outstandingPrincipal,
+    required List<AccountAllocation> allocations,
+    Map<String, double> availableAccountBalances = const {},
+    String repaymentCurrency = 'USD',
+    Map<String, String> accountCurrencies = const {},
+  }) {
+    if (principalAmount <= 0) {
+      return 'Principal repayment amount must be greater than zero.';
+    }
+    if (interestAmount < 0) {
+      return 'Interest amount cannot be negative.';
+    }
+    if (principalAmount > outstandingPrincipal + 0.0001) {
+      return 'Principal repayment cannot exceed outstanding principal (${outstandingPrincipal.toStringAsFixed(2)}).';
+    }
+    final totalPayment = principalAmount + interestAmount;
+    final totalAlloc = allocations.fold(0.0, (s, a) => s + a.amount);
+    if (totalAlloc > totalPayment + 0.0001) {
+      return 'Allocated amount exceeds total payment (${totalPayment.toStringAsFixed(2)}).';
+    }
+
+    // Validate each account's available funds
+    for (final alloc in allocations) {
+      final available = availableAccountBalances[alloc.accountId] ?? 0.0;
+      final accCurrency =
+          accountCurrencies[alloc.accountId] ?? repaymentCurrency;
+      final allocInAccCurrency = _currencyService.convert(
+        alloc.amount,
+        repaymentCurrency,
+        accCurrency,
+      );
+      if (allocInAccCurrency > available + 0.0001) {
+        return 'Insufficient funds in allocated account (Required: ${allocInAccCurrency.toStringAsFixed(2)} $accCurrency, Available: ${available.toStringAsFixed(2)} $accCurrency).';
+      }
+    }
+
+    return null;
   }
 
   /// Rounding helper for currency amounts.
